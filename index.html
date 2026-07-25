@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>よんだ本きろく</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --paper:#FBF7EC;
+  --paper-line:#EFE6D2;
+  --ink:#2B3A33;
+  --ink-soft:#5C6B62;
+  --green:#3D6B54;
+  --green-deep:#2C5140;
+  --honey:#E9A23B;
+  --honey-deep:#C9861F;
+  --shelf:#8A5A33;
+  --shelf-deep:#6E4526;
+  --white:#FFFFFF;
+  --red:#C75B4A;
+  --radius:22px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{width:100%;height:100%;overflow:hidden;}
+body{
+  font-family:'Zen Maru Gothic','Hiragino Maru Gothic ProN','ヒラギノ丸ゴ ProN W4',sans-serif;
+  background:var(--paper);
+  color:var(--ink);
+  font-weight:700;
+  touch-action:manipulation;
+  user-select:none;-webkit-user-select:none;
+}
+/* 紙の罫線のような背景 */
+body::before{
+  content:"";position:fixed;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,transparent 0 34px,var(--paper-line) 34px 35px);
+  opacity:.5;z-index:0;
+}
+.screen{position:fixed;inset:0;display:none;flex-direction:column;z-index:1;overflow:hidden;}
+.screen.active{display:flex;}
+
+/* ===== 共通ヘッダー ===== */
+.topbar{
+  flex:none;display:flex;align-items:center;gap:12px;
+  padding:12px 18px;background:var(--green);color:#fff;
+  box-shadow:0 3px 0 var(--green-deep);z-index:5;
+}
+.topbar .title{font-size:clamp(18px,2.6vw,26px);font-weight:900;letter-spacing:.06em;flex:1;display:flex;align-items:center;gap:10px;}
+.btn{
+  border:none;cursor:pointer;font-family:inherit;font-weight:900;color:var(--ink);
+  background:#fff;border-radius:16px;padding:12px 20px;font-size:clamp(15px,2vw,19px);
+  box-shadow:0 4px 0 rgba(0,0,0,.18);transition:transform .06s;
+}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 rgba(0,0,0,.18);}
+.btn.big{padding:18px 30px;font-size:clamp(20px,3vw,28px);border-radius:24px;}
+.btn.honey{background:var(--honey);color:#fff;box-shadow:0 4px 0 var(--honey-deep);}
+.btn.green{background:var(--green);color:#fff;box-shadow:0 4px 0 var(--green-deep);}
+.btn.gray{background:#E6E1D4;color:var(--ink-soft);}
+.btn.red{background:var(--red);color:#fff;box-shadow:0 4px 0 #9E4234;}
+.btn:disabled{opacity:.45;}
+
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px;position:relative;}
+
+/* ===== ホーム(なまええらび) ===== */
+#homeHead{
+  flex:none;text-align:center;padding:26px 20px 10px;
+}
+#homeHead h1{
+  font-size:clamp(26px,4.5vw,44px);font-weight:900;color:var(--green-deep);letter-spacing:.08em;
+}
+#homeHead h1 .book-ico{display:inline-block;transform:translateY(3px);margin:0 6px;}
+#homeHead p{color:var(--ink-soft);font-size:clamp(14px,2vw,18px);margin-top:6px;}
+#studentGrid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+  gap:16px;max-width:1100px;margin:0 auto;padding-bottom:30px;
+}
+.student-card{
+  background:#fff;border:3px solid var(--paper-line);border-radius:var(--radius);
+  padding:22px 10px 16px;text-align:center;cursor:pointer;
+  box-shadow:0 5px 0 rgba(61,107,84,.15);transition:transform .06s;
+  display:flex;flex-direction:column;align-items:center;gap:8px;min-height:130px;justify-content:center;
+}
+.student-card:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(61,107,84,.15);}
+.student-card .avatar{
+  width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:26px;color:#fff;font-weight:900;
+}
+.student-card .name{font-size:clamp(17px,2.2vw,22px);font-weight:900;line-height:1.3;}
+.student-card .count{font-size:13px;color:var(--ink-soft);}
+.student-card.add-card{
+  border:3px dashed var(--honey);background:#FFF9EE;box-shadow:0 5px 0 rgba(233,162,59,.25);
+}
+.student-card.add-card .avatar{background:var(--honey);font-size:32px;}
+.student-card.add-card .name{color:var(--honey-deep);}
+.empty-note{
+  grid-column:1/-1;text-align:center;color:var(--ink-soft);background:#fff;
+  border:3px dashed var(--paper-line);border-radius:var(--radius);padding:36px 20px;font-size:16px;line-height:1.9;
+}
+#teacherBtn{
+  position:fixed;right:14px;bottom:14px;z-index:6;
+  background:#fff;border:2px solid var(--paper-line);border-radius:14px;
+  padding:8px 16px 8px 10px;font-size:14px;color:var(--ink-soft);font-weight:700;cursor:pointer;font-family:inherit;
+  display:flex;align-items:center;gap:8px;
+  -webkit-touch-callout:none;user-select:none;
+}
+.tb-ring{position:relative;width:32px;height:32px;flex:none;}
+.tb-ring svg{width:100%;height:100%;transform:rotate(-90deg);display:block;}
+.tb-bg{fill:none;stroke:var(--paper-line);stroke-width:3.5;}
+.tb-fg{fill:none;stroke:var(--honey);stroke-width:3.5;stroke-linecap:round;stroke-dasharray:88;stroke-dashoffset:88;}
+/* 押している間だけゲージがたまる(1秒) */
+#teacherBtn.charging .tb-fg{stroke-dashoffset:0;transition:stroke-dashoffset 1s linear;}
+.tb-ico{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;}
+
+/* ===== 児童画面 ===== */
+#studentTitleName{font-weight:900;}
+#scanBigWrap{
+  flex:none;display:flex;justify-content:center;padding:18px 20px 6px;
+}
+#scanBigBtn{
+  display:flex;align-items:center;gap:16px;background:var(--honey);color:#fff;
+  border:none;border-radius:28px;padding:20px 40px;cursor:pointer;font-family:inherit;
+  font-size:clamp(22px,3.4vw,32px);font-weight:900;letter-spacing:.05em;
+  box-shadow:0 6px 0 var(--honey-deep);transition:transform .06s;
+}
+#scanBigBtn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--honey-deep);}
+#scanBigBtn svg{width:44px;height:44px;flex:none;}
+#manualLink{
+  text-align:center;margin:4px 0 0;
+}
+#manualLink button{
+  background:none;border:none;font-family:inherit;color:var(--green);font-weight:700;
+  font-size:15px;text-decoration:underline;cursor:pointer;padding:8px;
+}
+
+/* 本だな(シグネチャ) */
+.shelf-section{max-width:1000px;margin:10px auto 0;width:100%;}
+.shelf-label{
+  display:flex;align-items:baseline;gap:12px;margin:0 6px 6px;
+}
+.shelf-label h2{font-size:clamp(17px,2.4vw,22px);color:var(--green-deep);font-weight:900;}
+.shelf-label .num{color:var(--honey-deep);font-size:clamp(15px,2vw,18px);}
+.bookshelf{
+  position:relative;background:linear-gradient(#A0703F,#8A5A33);
+  border-radius:14px;padding:14px 14px 0;box-shadow:inset 0 4px 8px rgba(0,0,0,.25);
+}
+.shelf-row{
+  display:flex;align-items:flex-end;gap:4px;min-height:96px;
+  border-bottom:12px solid var(--shelf-deep);padding:6px 4px 0;
+  border-radius:0 0 4px 4px;flex-wrap:nowrap;overflow:hidden;
+}
+.spine{
+  width:26px;border-radius:4px 4px 0 0;flex:none;cursor:pointer;position:relative;
+  box-shadow:inset -3px 0 4px rgba(0,0,0,.22), inset 2px 2px 2px rgba(255,255,255,.25);
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  animation:pop .35s ease;
+}
+@keyframes pop{0%{transform:translateY(20px) scale(.6);opacity:0;}100%{transform:none;opacity:1;}}
+.spine span{
+  writing-mode:vertical-rl;font-size:10px;color:rgba(255,255,255,.95);font-weight:700;
+  max-height:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:4px 0;
+}
+.shelf-empty{
+  color:rgba(255,255,255,.85);font-size:14px;align-self:center;margin:0 auto;padding:20px 0 30px;
+}
+/* きろくリスト */
+.record-list{max-width:1000px;margin:18px auto 40px;width:100%;display:flex;flex-direction:column;gap:10px;}
+.record-item{
+  background:#fff;border:2px solid var(--paper-line);border-radius:16px;
+  padding:0;display:flex;align-items:stretch;gap:14px;overflow:hidden;
+}
+.record-item .date{
+  flex:none;background:var(--paper);padding:8px 12px;text-align:center;
+  display:flex;flex-direction:column;justify-content:center;
+  font-size:clamp(22px,3vw,28px);color:var(--green-deep);font-weight:900;line-height:1.1;min-width:88px;
+}
+.record-item .info{flex:1;min-width:0;padding:10px 0;}
+/* 表紙サムネイル */
+.record-item .cover{
+  flex:none;width:48px;height:66px;border-radius:5px;align-self:center;
+  background:var(--paper);border:1px solid var(--paper-line);
+  display:flex;align-items:center;justify-content:center;font-size:22px;color:#C8BFA9;
+  overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.15);
+}
+.record-item .cover img{width:100%;height:100%;object-fit:cover;display:block;}
+.record-item .rtitle{font-size:clamp(15px,2.1vw,19px);font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.record-item .rauthor{font-size:13px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.record-item .del{
+  flex:none;background:none;border:none;color:#C8BFA9;font-size:20px;cursor:pointer;padding:8px 14px;font-family:inherit;align-self:center;
+}
+/* お気に入り★(タップで編集) */
+.record-item .stars{display:flex;align-items:center;gap:2px;margin-top:4px;}
+.record-item .stars button{
+  background:none;border:none;cursor:pointer;font-size:34px;padding:4px 8px;line-height:1;
+  color:#D9D2C0;font-family:inherit;transition:transform .06s;
+}
+.record-item .stars button.on{color:var(--honey);}
+.record-item .stars button:active{transform:scale(1.2);}
+.record-item .stars .stars-label{font-size:11px;color:var(--ink-soft);margin-left:6px;font-weight:700;}
+
+/* ===== スキャン画面 ===== */
+#scanScreen{background:#182420;}
+#scanScreen .topbar{background:#0F1A16;box-shadow:none;}
+#readerWrap{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:14px;}
+#reader{width:min(92vw,560px);border-radius:18px;overflow:hidden;background:#000;}
+#scanGuide{
+  color:#fff;font-size:clamp(16px,2.4vw,22px);text-align:center;line-height:1.7;font-weight:700;
+}
+#scanGuide small{display:block;font-size:13px;color:#9FB7AC;font-weight:500;margin-top:4px;}
+#scanStatus{
+  min-height:34px;color:var(--honey);font-size:clamp(15px,2.2vw,20px);text-align:center;font-weight:900;
+}
+
+/* ===== モーダル ===== */
+.modal-back{
+  position:fixed;inset:0;background:rgba(30,40,35,.55);display:none;
+  align-items:center;justify-content:center;z-index:50;padding:20px;
+}
+.modal-back.show{display:flex;}
+.modal{
+  background:#fff;border-radius:26px;padding:26px;width:min(560px,94vw);max-height:88vh;overflow-y:auto;
+  box-shadow:0 12px 40px rgba(0,0,0,.3);
+}
+.modal h3{font-size:clamp(19px,2.6vw,24px);color:var(--green-deep);font-weight:900;margin-bottom:14px;text-align:center;}
+.book-confirm{
+  background:var(--paper);border-radius:18px;padding:18px;text-align:center;margin-bottom:18px;
+}
+.book-confirm .bc-cover{
+  height:170px;margin:0 auto 14px;border-radius:8px;display:none;
+  box-shadow:0 6px 16px rgba(0,0,0,.28);
+}
+.book-confirm .bc-cover.show{display:block;}
+.book-confirm .bc-title{font-size:clamp(18px,2.8vw,26px);font-weight:900;line-height:1.5;}
+.book-confirm .bc-author{font-size:clamp(14px,2vw,17px);color:var(--ink-soft);margin-top:6px;}
+.book-confirm .bc-date{font-size:13px;color:var(--honey-deep);margin-top:10px;font-weight:900;}
+.modal-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+.modal-btns .btn{min-width:130px;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:14px;color:var(--ink-soft);margin-bottom:6px;font-weight:700;}
+.field input,.field select{
+  width:100%;font-family:inherit;font-size:18px;font-weight:700;color:var(--ink);
+  border:2px solid var(--paper-line);border-radius:12px;padding:12px 14px;background:#fff;outline:none;
+}
+.field input:focus,.field select:focus{border-color:var(--green);}
+
+/* ===== 先生モード ===== */
+#teacherScreen .content{max-width:900px;margin:0 auto;width:100%;}
+.t-section{
+  background:#fff;border:2px solid var(--paper-line);border-radius:20px;padding:20px;margin-bottom:18px;
+}
+.t-section h2{
+  font-size:18px;color:var(--green-deep);font-weight:900;margin-bottom:14px;
+  display:flex;align-items:center;gap:8px;
+}
+.t-students{display:flex;flex-wrap:wrap;gap:10px;}
+.t-chip{
+  display:flex;align-items:center;gap:8px;background:var(--paper);border-radius:999px;
+  padding:8px 8px 8px 16px;font-size:15px;font-weight:700;
+}
+.t-chip button{
+  background:#E6E1D4;border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;
+  color:var(--ink-soft);font-weight:900;font-family:inherit;font-size:14px;
+}
+.t-addrow{display:flex;gap:10px;margin-top:14px;}
+.t-addrow input{
+  flex:1;font-family:inherit;font-size:16px;font-weight:700;border:2px solid var(--paper-line);
+  border-radius:12px;padding:12px 14px;outline:none;
+}
+.t-exportrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+.t-exportrow select{
+  font-family:inherit;font-size:17px;font-weight:700;border:2px solid var(--paper-line);
+  border-radius:12px;padding:12px 14px;background:#fff;color:var(--ink);
+}
+.t-note{font-size:13px;color:var(--ink-soft);line-height:1.8;margin-top:12px;}
+.t-danger{display:flex;gap:12px;flex-wrap:wrap;}
+
+/* トースト */
+#toast{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);
+  background:var(--green-deep);color:#fff;font-weight:900;font-size:16px;
+  padding:14px 26px;border-radius:999px;z-index:99;transition:transform .3s;box-shadow:0 6px 20px rgba(0,0,0,.25);
+  max-width:90vw;text-align:center;
+}
+#toast.show{transform:translateX(-50%) translateY(0);}
+
+@media (max-width:520px){
+  #studentGrid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));}
+  .spine{width:20px;}
+}
+
+/* ===== 印刷(読書記録カード A4) ===== */
+#printArea{display:none;}
+/* PDF生成時だけ画面外にA4サイズで実体化させる(html2canvasで撮影するため) */
+#printArea.pdf-render{display:block;position:fixed;left:-10000px;top:0;width:794px;background:#fff;z-index:-1;}
+.pdf-render .print-card{width:794px;min-height:1123px;box-sizing:border-box;padding:53px 45px;background:#fff;}
+@page{size:A4 portrait;margin:14mm 12mm;}
+@media print{
+  html,body{overflow:visible;height:auto;background:#fff;}
+  body::before{display:none;}
+  .screen,#teacherBtn,#toast,.modal-back{display:none!important;}
+  #printArea{display:block;}
+}
+.print-card{
+  page-break-after:always;break-after:page;
+  display:flex;flex-direction:column;min-height:260mm;color:#222;
+}
+.print-card:last-child{page-break-after:auto;break-after:auto;}
+.pc-head{
+  display:flex;align-items:baseline;justify-content:space-between;
+  border-bottom:3px double #333;padding-bottom:3mm;margin-bottom:5mm;
+}
+.pc-head h1{font-size:20pt;letter-spacing:.3em;font-weight:900;}
+.pc-month{font-size:12pt;font-weight:700;}
+.pc-table{width:100%;border-collapse:collapse;table-layout:fixed;}
+.pc-table th,.pc-table td{border:1.2pt solid #333;padding:2mm 2.5mm;font-size:10.5pt;overflow:hidden;}
+.pc-table th{background:#EFEFEF;font-size:9.5pt;font-weight:900;white-space:nowrap;padding:2mm 1mm;text-align:center;}
+.pc-table td{height:8mm;}
+.pc-table td.c{text-align:center;}
+.pc-table td.st{text-align:center;font-size:11pt;letter-spacing:1.5px;white-space:nowrap;}
+.pc-table td.st .off{color:#999;}
+.pc-foot{
+  margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;
+  padding-top:6mm;font-size:12pt;font-weight:700;
+}
+.pc-foot .pc-name{
+  border-bottom:1.2pt solid #333;min-width:60mm;display:inline-block;
+  text-align:center;padding:0 4mm 1mm;
+}
+</style>
+</head>
+<body>
+
+<!-- ============ ホーム:なまええらび ============ -->
+<div class="screen active" id="homeScreen">
+  <div id="homeHead">
+    <h1><span class="book-ico">📖</span>よんだ本きろく<span class="book-ico">📖</span></h1>
+    <p>じぶんの なまえを えらんでね(はじめてのときは「なまえを つくる」)</p>
+  </div>
+  <div class="content">
+    <div id="studentGrid"></div>
+  </div>
+  <button id="teacherBtn">
+    <span class="tb-ring">
+      <svg viewBox="0 0 36 36">
+        <circle class="tb-bg" cx="18" cy="18" r="14"/>
+        <circle class="tb-fg" cx="18" cy="18" r="14"/>
+      </svg>
+      <span class="tb-ico">⚙</span>
+    </span>
+    先生用
+  </button>
+</div>
+
+<!-- ============ 児童画面 ============ -->
+<div class="screen" id="studentScreen">
+  <div class="topbar">
+    <button class="btn gray" onclick="goHome()">← もどる</button>
+    <div class="title">📖 <span id="studentTitleName"></span> の きろく</div>
+    <button class="btn gray" onclick="openEditName()">なまえを かえる</button>
+  </div>
+  <div id="scanBigWrap">
+    <button id="scanBigBtn" onclick="openScan()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+        <line x1="7" y1="8" x2="7" y2="16"/><line x1="10" y1="8" x2="10" y2="16"/>
+        <line x1="13" y1="8" x2="13" y2="16"/><line x1="17" y1="8" x2="17" y2="16"/>
+      </svg>
+      バーコードを よみとる
+    </button>
+  </div>
+  <div id="manualLink"><button onclick="openManual()">バーコードがない本は こちら(じぶんで にゅうりょく)</button></div>
+  <div class="content">
+    <div class="shelf-section">
+      <div class="shelf-label">
+        <h2>じぶんの本だな</h2>
+        <div class="num"><span id="bookCount">0</span>さつ よんだよ!</div>
+      </div>
+      <div class="bookshelf" id="bookshelf"></div>
+    </div>
+    <div class="record-list" id="recordList"></div>
+  </div>
+</div>
+
+<!-- ============ スキャン画面 ============ -->
+<div class="screen" id="scanScreen">
+  <div class="topbar">
+    <button class="btn gray" onclick="closeScan()">← やめる</button>
+    <div class="title" style="color:#fff;">バーコードを よみとろう</div>
+  </div>
+  <div id="readerWrap">
+    <div id="scanGuide">
+      本のうらの <b style="color:var(--honey)">「978」ではじまる うえのバーコード</b> をうつしてね
+      <small>わくの中に バーコードが入るように しよう</small>
+    </div>
+    <div id="reader"></div>
+    <div id="scanStatus"></div>
+  </div>
+</div>
+
+<!-- ============ 本の確認モーダル ============ -->
+<div class="modal-back" id="confirmModal">
+  <div class="modal">
+    <h3>この本で あってるかな?</h3>
+    <div class="book-confirm">
+      <img class="bc-cover" id="cfCover" alt="">
+      <div class="bc-title" id="cfTitle"></div>
+      <div class="bc-author" id="cfAuthor"></div>
+      <div class="bc-date" id="cfDate"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn gray big" onclick="cancelConfirm()">ちがう</button>
+      <button class="btn honey big" onclick="saveConfirm()">きろくする!</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 手入力モーダル ============ -->
+<div class="modal-back" id="manualModal">
+  <div class="modal">
+    <h3>本の なまえを かこう</h3>
+    <div class="field">
+      <label>本の だいめい(かならず)</label>
+      <input type="text" id="mTitle" placeholder="れい:ぐりとぐら">
+    </div>
+    <div class="field">
+      <label>かいた人(わかったら)</label>
+      <input type="text" id="mAuthor" placeholder="れい:なかがわりえこ">
+    </div>
+    <div class="modal-btns">
+      <button class="btn gray" onclick="closeModal('manualModal')">やめる</button>
+      <button class="btn honey" onclick="saveManual()">きろくする!</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ なまえ登録モーダル(子ども用) ============ -->
+<div class="modal-back" id="nameModal">
+  <div class="modal">
+    <h3>じぶんの なまえを つくろう</h3>
+    <div class="field">
+      <label>なまえ(ひらがなでも かんじでも いいよ)</label>
+      <input type="text" id="newSelfName" placeholder="れい:たなか ひろと">
+    </div>
+    <div class="modal-btns">
+      <button class="btn gray big" onclick="closeModal('nameModal')">やめる</button>
+      <button class="btn honey big" onclick="saveSelfName()">つくる!</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ なまえ変更モーダル(子ども用) ============ -->
+<div class="modal-back" id="editNameModal">
+  <div class="modal">
+    <h3>なまえを かえる</h3>
+    <div class="field">
+      <label>あたらしい なまえ</label>
+      <input type="text" id="editSelfName">
+    </div>
+    <div class="modal-btns">
+      <button class="btn gray" onclick="closeModal('editNameModal')">やめる</button>
+      <button class="btn honey" onclick="saveEditName()">かえる!</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 先生モード ============ -->
+<div class="screen" id="teacherScreen">
+  <div class="topbar">
+    <button class="btn gray" onclick="goHome()">← 戻る</button>
+    <div class="title">⚙ 先生モード</div>
+  </div>
+  <div class="content">
+    <div class="t-section">
+      <h2>👧 名前の削除</h2>
+      <div class="t-note" style="margin:0 0 12px;">間違えて作った名前を削除できます。※削除すると、その子の読書記録もすべて消えます。名前の登録は、ホーム画面の「なまえを つくる」から子ども自身が行います。</div>
+      <div class="t-students" id="tStudents"></div>
+    </div>
+
+    <div class="t-section">
+      <h2>🖨 読書記録カードの出力(A4)</h2>
+      <div class="t-exportrow">
+        <select id="prStudent"></select>
+        <select id="prMonth"></select>
+        <button class="btn green" onclick="savePDF()">PDFで保存</button>
+        <button class="btn honey" onclick="printCards()">カードを印刷</button>
+      </div>
+      <div class="t-note">
+        配布中の読書記録カードと同じデザイン(本の名前・かいた人・読んだ日・お気に入り★・下部に名前)で、児童1人につきA4を1枚出力します。<br>
+        個人のタブレットではその子を選んで1人分だけ、先生の端末では「全員」でまとめて出力できます。※その月に記録のある児童のみが対象です。<br>
+        <b>iPadでは「PDFで保存」を使ってください</b>(共有画面から「"ファイル"に保存」やプリントができます)。「カードを印刷」はパソコン用です。
+      </div>
+    </div>
+
+    <div class="t-section">
+      <h2>📊 読書記録カードの出力(Excel)</h2>
+      <div class="t-exportrow">
+        <select id="expMonth"></select>
+        <button class="btn honey" onclick="exportExcel(false)">この月の記録カードを出力</button>
+        <button class="btn green" onclick="exportExcel(true)">全期間を出力</button>
+      </div>
+      <div class="t-note">
+        児童ごとに1シートの「読書記録カード」形式で出力します(日付・題名・作者・冊数)。<br>
+        最後のシートに全員分の一覧も入ります。iPadでは出力後「"ファイル"に保存」等で保存できます。
+      </div>
+    </div>
+
+    <div class="t-section">
+      <h2>💾 バックアップ</h2>
+      <div class="t-danger">
+        <button class="btn green" onclick="backupJSON()">データを書き出す(JSON)</button>
+        <button class="btn gray" onclick="document.getElementById('importFile').click()">データを読み込む</button>
+        <button class="btn red" onclick="resetAll()">全データを消去</button>
+      </div>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importJSON(event)">
+      <div class="t-note">※ データはこのiPad(ブラウザ)の中に保存されます。端末の変更・学期末には、JSONでのバックアップをおすすめします。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PDF保存モーダル ============ -->
+<div class="modal-back" id="pdfModal">
+  <div class="modal">
+    <h3>PDFができました</h3>
+    <div class="t-note" style="text-align:center;margin-bottom:16px;">「保存・共有」を押すと、iPadでは共有画面が開きます。<br>「"ファイル"に保存」やプリントを選んでください。</div>
+    <div class="modal-btns">
+      <button class="btn gray" onclick="closeModal('pdfModal')">とじる</button>
+      <button class="btn honey" onclick="sharePDF()">保存・共有</button>
+    </div>
+  </div>
+</div>
+
+<div id="printArea"></div>
+
+<div id="toast"></div>
+
+<script>
+/* =====================================================
+   よんだ本きろく — 読書記録カード支援アプリ
+   ・バーコード(ISBN)読取 → openBD / Google Books で書誌取得
+   ・児童ごとに localStorage へ蓄積
+   ・月別に Excel(読書記録カード形式)で出力
+===================================================== */
+
+const LS_STUDENTS='dokusho_students_v1';
+const LS_RECORDS ='dokusho_records_v1';
+
+const AVATAR_COLORS=['#D96C57','#4E8FB5','#E9A23B','#6BA368','#9B7EBD','#D98BB1','#5AB0A2','#C9862F'];
+const SPINE_COLORS =['#C75B4A','#3F7CA6','#D9962B','#5A9160','#8A6FB0','#C77BA0','#3F9C8E','#B08A2E','#7A6A5A','#5B7FBF'];
+
+let students=load(LS_STUDENTS,[]);   // [{id,name}]
+let records =load(LS_RECORDS,[]);    // [{id,studentId,isbn,title,author,date}]
+let currentStudent=null;
+let html5Qr=null;
+let scanning=false;
+let pendingBook=null;
+
+function load(k,d){try{return JSON.parse(localStorage.getItem(k))||d;}catch(e){return d;}}
+function save(k,v){localStorage.setItem(k,JSON.stringify(v));}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function todayStr(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function jpDate(s){const[y,m,d]=s.split('-');return `${Number(m)}/${Number(d)}`;}
+function jpDateFull(s){const[y,m,d]=s.split('-');return `${y}年${Number(m)}月${Number(d)}日`;}
+
+/* ---------- 効果音(Web Audio) ---------- */
+let audioCtx=null;
+function beep(ok=true){
+  try{
+    audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
+    const seq= ok? [[660,0,.09],[880,.1,.14]] : [[220,0,.2]];
+    seq.forEach(([f,t,dur])=>{
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+      o.type='sine';o.frequency.value=f;o.connect(g);g.connect(audioCtx.destination);
+      const st=audioCtx.currentTime+t;
+      g.gain.setValueAtTime(.001,st);g.gain.exponentialRampToValueAtTime(.3,st+.02);
+      g.gain.exponentialRampToValueAtTime(.001,st+dur);
+      o.start(st);o.stop(st+dur+.05);
+    });
+  }catch(e){}
+}
+
+/* ---------- 画面切替 ---------- */
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function goHome(){stopScanner();renderHome();show('homeScreen');}
+function toast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  clearTimeout(t._tm);t._tm=setTimeout(()=>t.classList.remove('show'),2200);
+}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+
+/* ---------- ホーム ---------- */
+function renderHome(){
+  const grid=document.getElementById('studentGrid');
+  grid.innerHTML='';
+  students.forEach((s,i)=>{
+    const n=records.filter(r=>r.studentId===s.id).length;
+    const card=document.createElement('div');
+    card.className='student-card';
+    card.innerHTML=`<div class="avatar" style="background:${AVATAR_COLORS[i%AVATAR_COLORS.length]}">${s.name.charAt(0)}</div>
+      <div class="name">${esc(s.name)}</div><div class="count">📚 ${n}さつ</div>`;
+    card.onclick=()=>openStudent(s);
+    grid.appendChild(card);
+  });
+  /* じぶんで なまえを つくるカード */
+  const add=document.createElement('div');
+  add.className='student-card add-card';
+  add.innerHTML='<div class="avatar">+</div><div class="name">なまえを つくる</div><div class="count">はじめての人は ここ!</div>';
+  add.onclick=openSelfName;
+  grid.appendChild(add);
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+/* ---------- なまえ登録・変更(子どもが自分で) ---------- */
+function openSelfName(){
+  document.getElementById('newSelfName').value='';
+  document.getElementById('nameModal').classList.add('show');
+  setTimeout(()=>document.getElementById('newSelfName').focus(),100);
+}
+function saveSelfName(){
+  const name=document.getElementById('newSelfName').value.trim();
+  if(!name){toast('なまえを かいてね');return;}
+  if(students.some(s=>s.name===name)){toast('おなじ なまえが もう あるよ');return;}
+  const s={id:uid(),name};
+  students.push(s);
+  save(LS_STUDENTS,students);
+  closeModal('nameModal');
+  beep(true);
+  toast('なまえが できたよ!さっそく 本を きろくしよう');
+  openStudent(s);
+}
+function openEditName(){
+  document.getElementById('editSelfName').value=currentStudent.name;
+  document.getElementById('editNameModal').classList.add('show');
+}
+function saveEditName(){
+  const name=document.getElementById('editSelfName').value.trim();
+  if(!name){toast('なまえを かいてね');return;}
+  if(students.some(s=>s.name===name&&s.id!==currentStudent.id)){toast('おなじ なまえが もう あるよ');return;}
+  currentStudent.name=name;
+  save(LS_STUDENTS,students);
+  closeModal('editNameModal');
+  document.getElementById('studentTitleName').textContent=name+' さん';
+  toast('なまえを かえたよ');
+}
+
+/* ---------- 児童画面 ---------- */
+function openStudent(s){
+  currentStudent=s;
+  document.getElementById('studentTitleName').textContent=s.name+' さん';
+  renderStudent();
+  show('studentScreen');
+  fetchMissingCovers();
+}
+/* 表紙機能より前に記録した本にも、あとから表紙をつける(1冊につき1回だけ試す) */
+let coverFetching=false;
+async function fetchMissingCovers(){
+  if(coverFetching)return;
+  const targets=records.filter(r=>r.isbn&&r.cover===undefined).slice(0,8);
+  if(!targets.length)return;
+  coverFetching=true;
+  let got=false;
+  try{
+    for(const r of targets){
+      const book=await lookupISBN(r.isbn);
+      r.cover=(book&&book.cover)||'';   /* 見つからなければ '' を入れて再試行しない */
+      if(r.cover)got=true;
+    }
+    save(LS_RECORDS,records);
+  }finally{
+    coverFetching=false;
+  }
+  if(got&&document.getElementById('studentScreen').classList.contains('active'))renderStudent();
+}
+function myRecords(){
+  return records.filter(r=>r.studentId===currentStudent.id).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
+}
+function renderStudent(){
+  const recs=myRecords();
+  document.getElementById('bookCount').textContent=recs.length;
+
+  /* 本だな:読んだ本が背表紙として並ぶ */
+  const shelf=document.getElementById('bookshelf');
+  shelf.innerHTML='';
+  if(recs.length===0){
+    const row=document.createElement('div');row.className='shelf-row';
+    row.innerHTML='<div class="shelf-empty">本をよんだら ここに ならぶよ!</div>';
+    shelf.appendChild(row);
+  }else{
+    const asc=[...recs].reverse();
+    const perRow=Math.max(8,Math.floor((Math.min(window.innerWidth,1000)-60)/30));
+    for(let i=0;i<asc.length;i+=perRow){
+      const row=document.createElement('div');row.className='shelf-row';
+      asc.slice(i,i+perRow).forEach((r,j)=>{
+        const sp=document.createElement('div');sp.className='spine';
+        const h=70+((i+j)*37)%26;
+        sp.style.height=h+'px';
+        sp.style.background=SPINE_COLORS[(i+j)%SPINE_COLORS.length];
+        sp.innerHTML=`<span>${esc(r.title)}</span>`;
+        sp.onclick=()=>toast(`「${r.title}」 ${jpDateFull(r.date)}によんだよ`);
+        row.appendChild(sp);
+      });
+      shelf.appendChild(row);
+    }
+  }
+
+  /* きろくリスト */
+  const list=document.getElementById('recordList');
+  list.innerHTML='';
+  recs.forEach(r=>{
+    const fav=r.fav||0;
+    const el=document.createElement('div');el.className='record-item';
+    const cover=r.cover
+      ? `<div class="cover"><img src="${esc(r.cover)}" alt="" onerror="this.parentNode.textContent='📖'"></div>`
+      : '<div class="cover">📖</div>';
+    el.innerHTML=`<div class="date">${jpDate(r.date)}</div>${cover}
+      <div class="info"><div class="rtitle">${esc(r.title)}</div><div class="rauthor">${esc(r.author||'')}</div>
+        <div class="stars">${[1,2,3].map(k=>`<button data-k="${k}" class="${k<=fav?'on':''}" title="おきにいり">★</button>`).join('')}<span class="stars-label">← タップで おきにいり</span></div>
+      </div>
+      <button class="del" title="けす">✕</button>`;
+    el.querySelectorAll('.stars button').forEach(b=>{
+      b.onclick=()=>{
+        const k=Number(b.dataset.k);
+        r.fav=(r.fav===k)?k-1:k;      /* おなじ★をもう一度タップすると1つ減る */
+        save(LS_RECORDS,records);
+        renderStudent();
+      };
+    });
+    el.querySelector('.del').onclick=()=>{
+      if(confirm(`「${r.title}」の きろくを けしますか?`)){
+        records=records.filter(x=>x.id!==r.id);save(LS_RECORDS,records);renderStudent();
+      }
+    };
+    list.appendChild(el);
+  });
+}
+
+/* ---------- バーコード読取 ---------- */
+function openScan(){
+  show('scanScreen');
+  document.getElementById('scanStatus').textContent='';
+  startScanner();
+}
+function closeScan(){stopScanner();show('studentScreen');}
+
+function startScanner(){
+  if(scanning)return;
+  const cfg={
+    fps:10,
+    qrbox:{width:280,height:150},
+    formatsToSupport:[Html5QrcodeSupportedFormats.EAN_13]
+  };
+  html5Qr=new Html5Qrcode('reader');
+  html5Qr.start({facingMode:'environment'},cfg,onScan,()=>{})
+    .then(()=>{scanning=true;})
+    .catch(err=>{
+      document.getElementById('scanStatus').textContent='カメラが つかえません(先生に見せてね)';
+      console.error(err);
+    });
+}
+function stopScanner(){
+  if(html5Qr&&scanning){
+    scanning=false;
+    html5Qr.stop().then(()=>html5Qr.clear()).catch(()=>{});
+  }
+}
+
+let lastCode='',lastTime=0;
+async function onScan(text){
+  const now=Date.now();
+  if(text===lastCode&&now-lastTime<3000)return;
+  lastCode=text;lastTime=now;
+
+  if(!/^97[89]\d{10}$/.test(text)){
+    /* 下段バーコード(192…)などは無視してガイド表示 */
+    document.getElementById('scanStatus').textContent='「978」ではじまる うえのバーコードを うつしてね';
+    return;
+  }
+  beep(true);
+  document.getElementById('scanStatus').textContent='📖 本を しらべているよ…';
+  stopScanner();
+  const book=await lookupISBN(text);
+  if(book){
+    if(alreadyRecorded({isbn:text,title:book.title})){
+      document.getElementById('scanStatus').textContent='';
+      show('studentScreen');
+      beep(false);
+      toast(`「${book.title}」は もう きろくしてあるよ(おなじ本は 1かいだけ)`);
+      return;
+    }
+    showConfirm({isbn:text,title:book.title,author:book.author,cover:book.cover||''});
+  }else{
+    document.getElementById('scanStatus').textContent='';
+    toast('本が みつからなかったよ。じぶんで にゅうりょくしてね');
+    show('studentScreen');
+    openManual();
+  }
+}
+
+/* openBD → Google Books の順で検索(あわせて表紙の候補も集める) */
+async function lookupISBN(isbn){
+  let found=null;
+  const covers=[];
+  try{
+    const res=await fetch('https://api.openbd.jp/v1/get?isbn='+isbn);
+    const data=await res.json();
+    if(data&&data[0]&&data[0].summary){
+      const s=data[0].summary;
+      if(s.title){
+        found={title:s.title,author:cleanAuthor(s.author||'')};
+        if(s.cover)covers.push(s.cover);
+      }
+    }
+  }catch(e){}
+  try{
+    const res=await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:'+isbn+'&country=JP');
+    const data=await res.json();
+    if(data.items&&data.items[0]){
+      const v=data.items[0].volumeInfo;
+      const gc=gbCover(v.imageLinks);
+      if(gc)covers.push(gc);
+      if(!found&&v.title)found={title:v.title,author:(v.authors||[]).join('、')};
+    }
+  }catch(e){}
+  covers.push('https://covers.openlibrary.org/b/isbn/'+isbn+'-L.jpg?default=false');
+  if(found)found.cover=await findCover(covers);
+  return found;
+}
+/* Google Books の画像URLを https 化し、めくれ効果を外す */
+function gbCover(links){
+  if(!links)return '';
+  return (links.thumbnail||links.smallThumbnail||'')
+    .replace(/^http:/,'https:').replace('&edge=curl','');
+}
+/* 候補をまとめて読み込んでみて、実際に表示できた表紙のうち一番よいものを使う */
+function testImage(url){
+  return new Promise(res=>{
+    if(!url)return res(false);
+    const im=new Image();
+    const t=setTimeout(()=>res(false),4000);
+    im.onload=()=>{clearTimeout(t);res(im.naturalWidth>2);};   /* 1px のダミー画像を除く */
+    im.onerror=()=>{clearTimeout(t);res(false);};
+    im.src=url;
+  });
+}
+async function findCover(candidates){
+  const oks=await Promise.all(candidates.map(testImage));
+  const i=oks.indexOf(true);
+  return i<0?'':candidates[i];
+}
+function cleanAuthor(a){
+  /* openBDの「著者名/著 ○○/絵」形式を整える */
+  /* 「中川,李枝子 大村,百合子」形式:カンマは姓名の区切りなので消し、空白で著者を分ける */
+  return a.split(' ').map(p=>p.replace(/\/(著|作|文|絵|画|訳|編|監修|さく|え|ぶん|やく).*/,'')).join('・').replace(/,/g,'');
+}
+
+/* ---------- 確認 → 保存 ---------- */
+/* おなじ本は1人1回だけ:ISBNが同じ、または題名(空白をのぞく)が同じなら登録済みとみなす */
+function alreadyRecorded(book){
+  const norm=t=>String(t||'').replace(/\s+/g,'');
+  return records.some(r=>r.studentId===currentStudent.id&&(
+    (book.isbn&&r.isbn&&r.isbn===book.isbn)||
+    (norm(book.title)&&norm(r.title)===norm(book.title))
+  ));
+}
+function showConfirm(book){
+  pendingBook=book;
+  show('studentScreen');
+  /* 表紙は読み込めたときだけ出す(見つからない本もあるため) */
+  const cov=document.getElementById('cfCover');
+  cov.classList.remove('show');
+  cov.onload=()=>{if(cov.naturalWidth>2)cov.classList.add('show');else cov.onerror();};
+  cov.onerror=()=>{cov.classList.remove('show');if(pendingBook)pendingBook.cover='';};
+  if(book.cover)cov.src=book.cover;else cov.removeAttribute('src');
+  document.getElementById('cfTitle').textContent=book.title;
+  document.getElementById('cfAuthor').textContent=book.author?('かいた人:'+book.author):'';
+  document.getElementById('cfDate').textContent='きょう '+jpDateFull(todayStr())+' の きろく';
+  document.getElementById('confirmModal').classList.add('show');
+}
+function cancelConfirm(){pendingBook=null;closeModal('confirmModal');}
+function saveConfirm(){
+  if(!pendingBook)return;
+  if(alreadyRecorded(pendingBook)){
+    closeModal('confirmModal');pendingBook=null;
+    toast('この本は もう きろくしてあるよ(おなじ本は 1かいだけ)');
+    return;
+  }
+  addRecord(pendingBook);
+  closeModal('confirmModal');
+  toast('きろくできたよ!🎉');
+}
+function addRecord(book){
+  records.push({id:uid(),studentId:currentStudent.id,isbn:book.isbn||'',title:book.title,author:book.author||'',cover:book.cover||'',date:todayStr()});
+  save(LS_RECORDS,records);
+  beep(true);
+  renderStudent();
+}
+
+/* ---------- 手入力 ---------- */
+function openManual(){
+  document.getElementById('mTitle').value='';
+  document.getElementById('mAuthor').value='';
+  document.getElementById('manualModal').classList.add('show');
+}
+function saveManual(){
+  const t=document.getElementById('mTitle').value.trim();
+  if(!t){toast('本の だいめいを かいてね');return;}
+  if(alreadyRecorded({title:t})){
+    toast(`「${t}」は もう きろくしてあるよ(おなじ本は 1かいだけ)`);
+    return;
+  }
+  addRecord({title:t,author:document.getElementById('mAuthor').value.trim()});
+  closeModal('manualModal');
+  toast('きろくできたよ!🎉');
+}
+
+/* ---------- 先生モード ---------- */
+function openTeacher(){
+  renderTeacher();
+  show('teacherScreen');
+}
+function renderTeacher(){
+  /* 名前の削除(間違えて作った名前の整理用) */
+  const box=document.getElementById('tStudents');
+  box.innerHTML=students.length?'':'<span style="color:var(--ink-soft);font-size:14px;">まだ登録されていません</span>';
+  students.forEach(s=>{
+    const n=records.filter(r=>r.studentId===s.id).length;
+    const chip=document.createElement('div');chip.className='t-chip';
+    chip.innerHTML=`<span>${esc(s.name)}(${n}冊)</span><button title="削除">✕</button>`;
+    chip.querySelector('button').onclick=()=>{
+      if(confirm(`「${s.name}」を削除しますか?\n※この児童の読書記録もすべて削除されます`)){
+        students=students.filter(x=>x.id!==s.id);
+        records=records.filter(r=>r.studentId!==s.id);
+        save(LS_STUDENTS,students);save(LS_RECORDS,records);renderTeacher();
+      }
+    };
+    box.appendChild(chip);
+  });
+  renderMonthSelect();
+}
+function renderMonthSelect(){
+  const months=[...new Set(records.map(r=>r.date.slice(0,7)))].sort().reverse();
+  const cur=new Date();
+  const curYM=cur.getFullYear()+'-'+String(cur.getMonth()+1).padStart(2,'0');
+  if(!months.includes(curYM))months.unshift(curYM);
+  const html=months.map(m=>{
+    const[y,mo]=m.split('-');
+    return `<option value="${m}">${y}年${Number(mo)}月</option>`;
+  }).join('');
+  document.getElementById('expMonth').innerHTML=html;
+  document.getElementById('prMonth').innerHTML=html;
+  /* 印刷対象の児童(全員 or 1人)。個人タブレットで児童が1人ならその子を初期選択 */
+  const ps=document.getElementById('prStudent');
+  ps.innerHTML='<option value="">全員</option>'+students.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  if(students.length===1)ps.value=students[0].id;
+}
+function starStr(n,offMark='☆'){
+  let s='';for(let i=0;i<3;i++)s+=i<n?'★':offMark;return s;
+}
+
+/* ---------- A4カード出力(印刷・PDF共通) ---------- */
+function buildPrintCards(){
+  const ym=document.getElementById('prMonth').value;
+  const[y,m]=ym.split('-');
+  const label=`${y}年${Number(m)}月`;
+  const MIN_ROWS=15;   /* 記録が少なくても手書き用に罫線を確保 */
+  const targetId=document.getElementById('prStudent').value;   /* ''=全員 */
+  const cards=[];
+  students.forEach(s=>{
+    if(targetId&&s.id!==targetId)return;
+    const recs=records.filter(r=>r.studentId===s.id&&r.date.startsWith(ym))
+      .sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
+    if(!recs.length)return;
+    let rows='';
+    recs.forEach((r,i)=>{
+      const fav=r.fav||0;
+      rows+=`<tr><td class="c">${i+1}</td><td>${esc(r.title)}</td><td>${esc(r.author||'')}</td><td class="c">${jpDate(r.date)}</td><td class="st">${'★'.repeat(fav)}<span class="off">${'☆'.repeat(3-fav)}</span></td></tr>`;
+    });
+    for(let i=recs.length;i<MIN_ROWS;i++){
+      rows+=`<tr><td class="c">${i+1}</td><td></td><td></td><td></td><td class="st"><span class="off">☆☆☆</span></td></tr>`;
+    }
+    cards.push(`<div class="print-card">
+      <div class="pc-head"><h1>読書記録カード</h1><div class="pc-month">${label}</div></div>
+      <table class="pc-table">
+        <colgroup><col style="width:9mm"><col><col style="width:38mm"><col style="width:20mm"><col style="width:24mm"></colgroup>
+        <thead><tr><th>No.</th><th>本の名前</th><th>かいた人</th><th>読んだ日</th><th>お気に入り</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="pc-foot"><div>よんだ本 ${recs.length} さつ</div><div>名前 <span class="pc-name">${esc(s.name)}</span></div></div>
+    </div>`);
+  });
+  document.getElementById('printArea').innerHTML=cards.join('');
+  return{count:cards.length,label};
+}
+function printCards(){
+  const info=buildPrintCards();
+  if(!info.count){toast(info.label+'の記録がある児童がいません');return;}
+  /* ホーム画面に追加したアプリ(スタンドアロン)では window.print() が動かない */
+  if(navigator.standalone||window.matchMedia('(display-mode: standalone)').matches){
+    toast('この画面では印刷できません。「PDFで保存」を使ってね');
+    return;
+  }
+  window.print();
+}
+
+/* ---------- PDF保存(iPad対応) ---------- */
+let pdfFile=null;
+async function savePDF(){
+  const info=buildPrintCards();
+  if(!info.count){toast(info.label+'の記録がある児童がいません');return;}
+  if(typeof html2canvas==='undefined'||typeof jspdf==='undefined'){
+    toast('PDF機能を読み込めませんでした。通信を確認して再読み込みしてください');return;
+  }
+  toast('PDFを作成中…そのまま待ってね');
+  const pa=document.getElementById('printArea');
+  pa.classList.add('pdf-render');
+  try{
+    const pdf=new jspdf.jsPDF({unit:'mm',format:'a4',compress:true});
+    const cardEls=[...pa.querySelectorAll('.print-card')];
+    for(let i=0;i<cardEls.length;i++){
+      const canvas=await html2canvas(cardEls[i],{scale:2,backgroundColor:'#ffffff'});
+      if(i>0)pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg',.92),'JPEG',0,0,210,297);
+    }
+    const blob=pdf.output('blob');
+    pdfFile=new File([blob],`読書記録カード_${info.label}.pdf`,{type:'application/pdf'});
+    document.getElementById('pdfModal').classList.add('show');
+  }catch(e){
+    console.error(e);
+    toast('PDFの作成に失敗しました');
+  }finally{
+    pa.classList.remove('pdf-render');
+  }
+}
+async function sharePDF(){
+  if(!pdfFile)return;
+  /* iPadでは共有シート(ファイルに保存・プリント等)、PCではダウンロード */
+  if(navigator.canShare&&navigator.canShare({files:[pdfFile]})){
+    try{
+      await navigator.share({files:[pdfFile],title:pdfFile.name});
+      closeModal('pdfModal');
+      return;
+    }catch(e){
+      if(e&&e.name==='AbortError')return;   /* ユーザーが共有をキャンセル */
+    }
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(pdfFile);
+  a.download=pdfFile.name;
+  a.click();
+  closeModal('pdfModal');
+}
+
+/* ---------- Excel出力 ---------- */
+function exportExcel(allPeriod){
+  if(students.length===0){toast('児童が登録されていません');return;}
+  const ym=document.getElementById('expMonth').value;
+  const[y,m]=ym.split('-');
+  const label=allPeriod?'全期間':`${y}年${Number(m)}月`;
+
+  const wb=XLSX.utils.book_new();
+  const usedNames={};
+
+  students.forEach(s=>{
+    let recs=records.filter(r=>r.studentId===s.id);
+    if(!allPeriod)recs=recs.filter(r=>r.date.startsWith(ym));
+    recs.sort((a,b)=>a.date.localeCompare(b.date));
+
+    const aoa=[
+      ['読 書 記 録 カ ー ド'],
+      [],
+      ['名前',s.name,'','期間',label],
+      ['読んだ冊数',recs.length+' 冊'],
+      [],
+      ['No.','読んだ日','本の題名','作者','お気に入り'],
+    ];
+    recs.forEach((r,i)=>{
+      const[ry,rm,rd]=r.date.split('-');
+      aoa.push([i+1,`${Number(rm)}月${Number(rd)}日`,r.title,r.author||'',starStr(r.fav||0)]);
+    });
+    /* 手書き用の空行 */
+    for(let i=0;i<3;i++)aoa.push([recs.length+i+1,'','','','']);
+    aoa.push([]);
+    aoa.push(['先生から','']);
+
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=[{wch:5},{wch:12},{wch:42},{wch:24},{wch:10}];
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:4}}];
+
+    /* シート名の重複・禁止文字対策 */
+    let name=s.name.replace(/[\\\/\?\*\[\]:]/g,'').slice(0,25)||'児童';
+    if(usedNames[name]){usedNames[name]++;name=name+usedNames[name];}else{usedNames[name]=1;}
+    XLSX.utils.book_append_sheet(wb,ws,name);
+  });
+
+  /* 全員一覧シート */
+  const listAoa=[['読書記録 一覧('+label+')'],[],['名前','読んだ日','本の題名','作者','お気に入り','ISBN']];
+  let target=allPeriod?records:records.filter(r=>r.date.startsWith(ym));
+  target=[...target].sort((a,b)=>a.date.localeCompare(b.date));
+  target.forEach(r=>{
+    const s=students.find(x=>x.id===r.studentId);
+    listAoa.push([s?s.name:'(削除済み)',r.date,r.title,r.author||'',starStr(r.fav||0),r.isbn||'']);
+  });
+  const wsAll=XLSX.utils.aoa_to_sheet(listAoa);
+  wsAll['!cols']=[{wch:16},{wch:12},{wch:42},{wch:24},{wch:10},{wch:16}];
+  XLSX.utils.book_append_sheet(wb,wsAll,'全員一覧');
+
+  const fname=allPeriod?'読書記録カード_全期間.xlsx':`読書記録カード_${y}年${Number(m)}月.xlsx`;
+  XLSX.writeFile(wb,fname);
+  toast('Excelファイルを出力しました');
+}
+
+/* ---------- バックアップ ---------- */
+function backupJSON(){
+  const data=JSON.stringify({students,records,exported:new Date().toISOString()},null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='読書記録バックアップ_'+todayStr()+'.json';
+  a.click();
+}
+function importJSON(ev){
+  const file=ev.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(reader.result);
+      if(!Array.isArray(data.students)||!Array.isArray(data.records))throw 0;
+      if(confirm('現在のデータを、読み込んだデータで置き換えます。よろしいですか?')){
+        students=data.students;records=data.records;
+        save(LS_STUDENTS,students);save(LS_RECORDS,records);
+        renderTeacher();toast('データを読み込みました');
+      }
+    }catch(e){alert('ファイルを読み込めませんでした');}
+  };
+  reader.readAsText(file);
+  ev.target.value='';
+}
+function resetAll(){
+  if(confirm('本当に全データ(児童・読書記録)を消去しますか?'))
+    if(confirm('この操作は取り消せません。バックアップは済んでいますか?')){
+      students=[];records=[];
+      save(LS_STUDENTS,students);save(LS_RECORDS,records);
+      renderTeacher();toast('全データを消去しました');
+    }
+}
+
+/* ---------- 先生用ボタン(押している間に円ゲージがたまると開く。子どもの誤タップ防止) ---------- */
+(function(){
+  const tb=document.getElementById('teacherBtn');
+  const HOLD=1000;      /* ためる時間(ms) = CSSのtransitionと合わせる */
+  let timer=null;
+  function press(e){
+    e.preventDefault();
+    reset();
+    tb.classList.add('charging');   /* CSSでゲージがたまっていく */
+    timer=setTimeout(()=>{timer=null;reset();beep(true);openTeacher();},HOLD);
+  }
+  function reset(){
+    if(timer){clearTimeout(timer);timer=null;}
+    tb.classList.remove('charging');   /* 途中で離すとゲージは空に戻る */
+  }
+  tb.addEventListener('pointerdown',press);
+  tb.addEventListener('pointerup',reset);
+  tb.addEventListener('pointerleave',reset);
+  tb.addEventListener('pointercancel',reset);
+  tb.addEventListener('contextmenu',e=>e.preventDefault());   /* iPadの長押しメニューを抑止 */
+})();
+
+/* ---------- 起動 ---------- */
+renderHome();
+</script>
+</body>
+</html>
