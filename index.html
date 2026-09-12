@@ -839,13 +839,13 @@ async function onScan(text){
   }
 }
 
-/* openBD → Google Books の順で検索(あわせて表紙の候補も集める) */
+/* openBD → 国立国会図書館 → Google Books の順で検索(あわせて表紙の候補も集める) */
 async function lookupISBN(isbn){
   let found=null;
   const covers=[];
+  /* ① openBD:新しめの本に強く、表紙も持っている */
   try{
-    const res=await fetch('https://api.openbd.jp/v1/get?isbn='+isbn);
-    const data=await res.json();
+    const data=await fetchJSON('https://api.openbd.jp/v1/get?isbn='+isbn);
     if(data&&data[0]&&data[0].summary){
       const s=data[0].summary;
       if(s.title){
@@ -854,19 +854,76 @@ async function lookupISBN(isbn){
       }
     }
   }catch(e){}
-  try{
-    const res=await fetch('https://www.googleapis.com/books/v1/volumes?q=isbn:'+isbn+'&country=JP');
-    const data=await res.json();
-    if(data.items&&data.items[0]){
-      const v=data.items[0].volumeInfo;
-      const gc=gbCover(v.imageLinks);
-      if(gc)covers.push(gc);
-      if(!found&&v.title)found={title:v.title,author:(v.authors||[]).join('、')};
-    }
-  }catch(e){}
+  /* ② 国立国会図書館:日本で出版された本をほぼ網羅。図書室の古い本はここで見つかる */
+  if(!found){
+    try{ found=await lookupNDL(isbn); }catch(e){}
+  }
+  /* ③ Google Books:洋書など。表紙だけ借りることもある */
+  if(!found||!covers.length){
+    try{
+      const data=await fetchJSON('https://www.googleapis.com/books/v1/volumes?q=isbn:'+isbn+'&country=JP');
+      if(data.items&&data.items[0]){
+        const v=data.items[0].volumeInfo;
+        const gc=gbCover(v.imageLinks);
+        if(gc)covers.push(gc);
+        if(!found&&v.title)found={title:v.title,author:(v.authors||[]).join('・')};
+      }
+    }catch(e){}
+  }
   covers.push('https://covers.openlibrary.org/b/isbn/'+isbn+'-L.jpg?default=false');
-  if(found)found.cover=await findCover(covers);
+  if(found){
+    found.title=tidyTitle(found.title);
+    found.cover=await findCover(covers);
+  }
   return found;
+}
+/* 国立国会図書館サーチ(XMLで返ってくる) */
+async function lookupNDL(isbn){
+  const res=await fetchTimeout('https://ndlsearch.ndl.go.jp/api/opensearch?isbn='+isbn);
+  if(!res.ok)return null;
+  const doc=new DOMParser().parseFromString(await res.text(),'application/xml');
+  const item=doc.getElementsByTagName('item')[0];
+  if(!item)return null;
+  const tags=n=>[...item.getElementsByTagName(n)].map(e=>e.textContent.trim()).filter(Boolean);
+  let title=tags('dc:title')[0]||tags('title')[0]||'';
+  if(!title)return null;
+  const vol=tags('dcndl:volume')[0];
+  if(vol)title+=' '+vol;
+  let author=ndlAuthor(tags('dc:creator'));
+  if(!author)author=ndlAuthor(tags('author').slice(0,1));
+  return{title:title,author:author};
+}
+/* 「本のなまえ : 長い副題」→「本のなまえ」(記録カードに書ききれないため) */
+function tidyTitle(t){
+  const s=String(t||'').trim();
+  return s.replace(/\s*[:：]\s*.*$/,'').trim()||s;
+}
+/* 1人分の著者名を整える:「あまん, きみこ, 1931-」「アイプランニング／著」→「あまんきみこ」「アイプランニング」 */
+function tidyOneAuthor(a){
+  const ROLE=/\s*[\/／]?\s*\[?(著|作|文|絵|画|訳|編|編著|編纂|監修|さく|え|ぶん|やく)\]?\s*$/;
+  return String(a||'').split(',').map(p=>p.trim())
+    .filter(p=>p&&!/^\d{3,4}\s*-/.test(p)&&!/^-?\d+$/.test(p))   /* 生没年(1931- など)は消す */
+    .map(p=>p.replace(ROLE,'').trim())
+    .filter(Boolean).join('');
+}
+/* openBD形式:空白で著者が区切られる(「中川,李枝子 大村,百合子」) */
+function cleanAuthor(s){
+  return String(s||'').split(/[ 　]+/).map(tidyOneAuthor).filter(Boolean).join('・');
+}
+/* 国立国会図書館形式:著者ごとに要素が分かれている */
+function ndlAuthor(list){
+  return (list||[]).map(tidyOneAuthor).filter(Boolean).join('・');
+}
+/* 通信が遅いときに子どもを待たせすぎないようにする */
+function fetchTimeout(url,ms){
+  return Promise.race([
+    fetch(url),
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms||7000))
+  ]);
+}
+async function fetchJSON(url,ms){
+  const r=await fetchTimeout(url,ms);
+  return await r.json();
 }
 /* Google Books の画像URLを https 化し、めくれ効果を外す */
 function gbCover(links){
@@ -889,11 +946,6 @@ async function findCover(candidates){
   const oks=await Promise.all(candidates.map(testImage));
   const i=oks.indexOf(true);
   return i<0?'':candidates[i];
-}
-function cleanAuthor(a){
-  /* openBDの「著者名/著 ○○/絵」形式を整える */
-  /* 「中川,李枝子 大村,百合子」形式:カンマは姓名の区切りなので消し、空白で著者を分ける */
-  return a.split(' ').map(p=>p.replace(/\/(著|作|文|絵|画|訳|編|監修|さく|え|ぶん|やく).*/,'')).join('・').replace(/,/g,'');
 }
 
 /* ---------- 確認 → 保存 ---------- */
