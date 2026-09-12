@@ -456,7 +456,7 @@ body::before{
 <!-- ============ きろくの なおしモーダル ============ -->
 <div class="modal-back" id="editBookModal">
   <div class="modal">
-    <h3>この本の なまえを なおす</h3>
+    <h3>この きろくを なおす</h3>
     <div class="field">
       <label>本の だいめい(かならず)</label>
       <input type="text" id="eTitle" placeholder="れい:ぐりとぐら">
@@ -464,6 +464,10 @@ body::before{
     <div class="field">
       <label>かいた人(わかったら)</label>
       <input type="text" id="eAuthor" placeholder="れい:なかがわりえこ">
+    </div>
+    <div class="field">
+      <label>よんだ日</label>
+      <input type="date" id="eDate">
     </div>
     <div class="modal-btns">
       <button class="btn gray" onclick="closeModal('editBookModal')">やめる</button>
@@ -1014,6 +1018,7 @@ function openEditBook(r){
   editingRecordId=r.id;
   document.getElementById('eTitle').value=r.title;
   document.getElementById('eAuthor').value=r.author||'';
+  document.getElementById('eDate').value=r.date;
   document.getElementById('editBookModal').classList.add('show');
   setTimeout(()=>document.getElementById('eTitle').focus(),100);
 }
@@ -1022,6 +1027,9 @@ function saveEditBook(){
   if(!r){closeModal('editBookModal');return;}
   const t=document.getElementById('eTitle').value.trim();
   if(!t){toast('本の だいめいを かいてね');return;}
+  const d=document.getElementById('eDate').value;
+  /* よんだ日は YYYY-MM-DD の形でないと、月ごとの出力がくるってしまう */
+  if(!d||d.length!==10||d[4]!=='-'||d[7]!=='-'||isNaN(Date.parse(d))){toast('よんだ日を えらんでね');return;}
   /* 自分以外に おなじ だいめいの きろくが あるときは なおせない */
   if(alreadyRecorded({title:t},r.id)){
     toast(`「${t}」は べつに きろくして あるよ`);
@@ -1029,6 +1037,7 @@ function saveEditBook(){
   }
   r.title=t;
   r.author=document.getElementById('eAuthor').value.trim();
+  r.date=d;
   save(LS_RECORDS,records);
   closeModal('editBookModal');
   editingRecordId=null;
