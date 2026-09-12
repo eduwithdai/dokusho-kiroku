@@ -190,6 +190,11 @@ body::before{
   overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,.15);
 }
 .record-item .cover img{width:100%;height:100%;object-fit:cover;display:block;}
+.record-item .edit{
+  flex:none;background:none;border:none;color:var(--green);font-size:22px;cursor:pointer;
+  padding:8px 6px 8px 12px;font-family:inherit;align-self:center;
+}
+.record-item .edit:active{transform:scale(1.2);}
 .record-item .rtitle{font-size:clamp(15px,2.1vw,19px);font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .record-item .rauthor{font-size:13px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .record-item .del{
@@ -293,6 +298,14 @@ body::before{
 @media (max-width:520px){
   #studentGrid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));}
   .spine{width:20px;}
+  /* せまい画面では、本のだいめいが見えるように まわりを小さくする */
+  .record-item{gap:6px;}
+  .record-item .date{min-width:58px;font-size:19px;padding:8px 6px;}
+  .record-item .cover{width:38px;height:52px;font-size:18px;}
+  .record-item .stars button{font-size:28px;padding:4px 5px;}
+  .record-item .stars .stars-label{display:none;}
+  .record-item .edit{font-size:19px;padding:8px 4px 8px 6px;}
+  .record-item .del{font-size:18px;padding:8px 8px;}
 }
 
 /* ===== 印刷(読書記録カード A4) ===== */
@@ -436,6 +449,25 @@ body::before{
     <div class="modal-btns">
       <button class="btn gray" onclick="closeModal('manualModal')">やめる</button>
       <button class="btn honey" onclick="saveManual()">きろくする!</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ きろくの なおしモーダル ============ -->
+<div class="modal-back" id="editBookModal">
+  <div class="modal">
+    <h3>この本の なまえを なおす</h3>
+    <div class="field">
+      <label>本の だいめい(かならず)</label>
+      <input type="text" id="eTitle" placeholder="れい:ぐりとぐら">
+    </div>
+    <div class="field">
+      <label>かいた人(わかったら)</label>
+      <input type="text" id="eAuthor" placeholder="れい:なかがわりえこ">
+    </div>
+    <div class="modal-btns">
+      <button class="btn gray" onclick="closeModal('editBookModal')">やめる</button>
+      <button class="btn honey" onclick="saveEditBook()">なおす!</button>
     </div>
   </div>
 </div>
@@ -725,6 +757,7 @@ function renderStudent(){
       <div class="info"><div class="rtitle">${esc(r.title)}</div><div class="rauthor">${esc(r.author||'')}</div>
         <div class="stars">${[1,2,3].map(k=>`<button data-k="${k}" class="${k<=fav?'on':''}" title="おきにいり">★</button>`).join('')}<span class="stars-label">← タップで おきにいり</span></div>
       </div>
+      <button class="edit" title="なおす">✏️</button>
       <button class="del" title="けす">✕</button>`;
     el.querySelectorAll('.stars button').forEach(b=>{
       b.onclick=()=>{
@@ -734,6 +767,7 @@ function renderStudent(){
         renderStudent();
       };
     });
+    el.querySelector('.edit').onclick=()=>openEditBook(r);
     el.querySelector('.del').onclick=()=>{
       if(confirm(`「${r.title}」の きろくを けしますか?`)){
         records=records.filter(x=>x.id!==r.id);save(LS_RECORDS,records);renderStudent();
@@ -864,9 +898,9 @@ function cleanAuthor(a){
 
 /* ---------- 確認 → 保存 ---------- */
 /* おなじ本は1人1回だけ:ISBNが同じ、または題名(空白をのぞく)が同じなら登録済みとみなす */
-function alreadyRecorded(book){
+function alreadyRecorded(book,excludeId){
   const norm=t=>String(t||'').replace(/\s+/g,'');
-  return records.some(r=>r.studentId===currentStudent.id&&(
+  return records.some(r=>r.studentId===currentStudent.id&&r.id!==excludeId&&(
     (book.isbn&&r.isbn&&r.isbn===book.isbn)||
     (norm(book.title)&&norm(r.title)===norm(book.title))
   ));
@@ -920,6 +954,35 @@ function saveManual(){
   addRecord({title:t,author:document.getElementById('mAuthor').value.trim()});
   closeModal('manualModal');
   toast('きろくできたよ!🎉');
+}
+
+/* ---------- きろくの なおし(まちがえた だいめい・かいた人を なおす) ---------- */
+let editingRecordId=null;
+function openEditBook(r){
+  editingRecordId=r.id;
+  document.getElementById('eTitle').value=r.title;
+  document.getElementById('eAuthor').value=r.author||'';
+  document.getElementById('editBookModal').classList.add('show');
+  setTimeout(()=>document.getElementById('eTitle').focus(),100);
+}
+function saveEditBook(){
+  const r=records.find(x=>x.id===editingRecordId);
+  if(!r){closeModal('editBookModal');return;}
+  const t=document.getElementById('eTitle').value.trim();
+  if(!t){toast('本の だいめいを かいてね');return;}
+  /* 自分以外に おなじ だいめいの きろくが あるときは なおせない */
+  if(alreadyRecorded({title:t},r.id)){
+    toast(`「${t}」は べつに きろくして あるよ`);
+    return;
+  }
+  r.title=t;
+  r.author=document.getElementById('eAuthor').value.trim();
+  save(LS_RECORDS,records);
+  closeModal('editBookModal');
+  editingRecordId=null;
+  beep(true);
+  renderStudent();
+  toast('なおしたよ!');
 }
 
 /* ---------- 先生モード ---------- */

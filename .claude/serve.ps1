@@ -8,7 +8,7 @@ while ($listener.IsListening) {
   $ctx = $listener.GetContext()
   try {
     $rel = [uri]::UnescapeDataString($ctx.Request.Url.AbsolutePath.TrimStart('/'))
-    if ($rel -eq "") { $rel = "dokusho-kiroku.html" }
+    if ($rel -eq "") { $rel = "index.html" }
     $path = Join-Path $Root $rel
     if (Test-Path $path -PathType Leaf) {
       $bytes = [System.IO.File]::ReadAllBytes($path)
